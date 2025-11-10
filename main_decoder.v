@@ -16,17 +16,25 @@ module main_decoder (
     // ... other ALU opcodes ...
 
     always @(*) begin
-        // Default control signals (NOP-like)
-        RegWrite=0; MemRead=0; MemWrite=0; MemToReg=0; ALUSrc=0; ALUOp=ALU_ADD;
+        // Default control signal values
+        RegWrite = 1'b0;
+        MemRead  = 1'b0;
+        MemWrite = 1'b0;
+        MemToReg = 1'b0;
+        ALUSrc   = 1'b0;
+        ALUOp    = 3'b000; // Default to ADD
+
         case (opcode)
-            OP_RTYPE: begin
-                RegWrite = 1'b1;
-                // Set ALUOp based on funct3/funct7 for ADD, SUB, etc.
-                ALUOp = ALU_ADD; // Placeholder - Add full R-type decoding
+            // R-type (add, sub, etc.)
+            7'b0110011: begin
+                RegWrite = 1'b1; // FIX: Enable writing to register file
+                ALUSrc   = 1'b0; // Operand B from register file
+                ALUOp    = 3'b010; // ALU determines operation from funct3/funct7
             end
-            OP_ITYPE: begin // ADDI, SLTI, LW offset calc, etc.
-                RegWrite = 1'b1; ALUSrc = 1'b1;
-                // Set ALUOp based on funct3 for ADDI, SLTI, etc.
+            // I-type (addi)
+            7'b0010011: begin
+                RegWrite = 1'b1;
+                ALUSrc = 1'b1;
                 ALUOp = ALU_ADD; // Placeholder
             end
             OP_LOAD:  begin // LW

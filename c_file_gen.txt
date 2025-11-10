@@ -1,0 +1,38 @@
+cd "/mnt/c/Users/prabh/OneDrive/Desktop/assignments/CO/final_project_with_structure/final_project_with_structure.srcs/sources_1/new"
+
+
+
+riscv64-unknown-elf-gcc -march=rv32i -mabi=ilp32 -O0 -ffreestanding -c test_multiply.c -o test_multiply.o
+
+
+riscv64-unknown-elf-gcc -march=rv32i -mabi=ilp32 -O0 -ffreestanding \
+  -nostartfiles -nostdlib \
+  -Wl,-T,link.ld \
+  test_multiply.o -lgcc -o test_multiply.elf
+
+
+
+
+riscv64-unknown-elf-objcopy -O binary test_multiply.elf test_multiply.bin
+
+hexdump -v -e '4/1 "%02x" "\n"' test_multiply.bin \
+  | awk '{printf("%s%s%s%s\n", substr($0,7,2), substr($0,5,2), substr($0,3,2), substr($0,1,2))}' \
+  > test.hex
+
+ls -l test_multiply.elf test_multiply.bin test.hex
+head -n 32 test.hex
+
+
+
+
+# Show ELF header (32-bit vs 64-bit)
+riscv64-unknown-elf-readelf -h test_multiply.o
+
+# Show which libgcc gcc would pick
+riscv64-unknown-elf-gcc -print-libgcc-file-name
+
+# Show ELF header of that libgcc (first object inside archive)
+ar -t $(riscv64-unknown-elf-gcc -print-libgcc-file-name) | head
+# extract first member and read its header:
+ar x $(riscv64-unknown-elf-gcc -print-libgcc-file-name) $(ar -t $(riscv64-unknown-elf-gcc -print-libgcc-file-name) | head -n1)
+riscv64-unknown-elf-readelf -h ./*  # will show the extracted file header

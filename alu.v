@@ -6,7 +6,8 @@ module alu (
     input  wire [31:0] B,
     input  wire [2:0]  ALUOp,
     output reg  [31:0] Result,
-    output wire        Zero
+    output reg         Zero,
+    output reg         Negative // NEW: For signed comparisons
 );
     localparam ALU_ADD  = 3'b000;
     localparam ALU_SUB  = 3'b001;
@@ -19,6 +20,11 @@ module alu (
 
     // Combinational logic for ALU operations
     always @(*) begin
+        // Default outputs
+        Result = 32'hxxxxxxxx;
+        Zero = 1'b0;
+        Negative = 1'b0; // NEW: Default to not negative
+
         case (ALUOp)
             ALU_ADD:  Result = A + B;
             ALU_SUB:  Result = A - B;
@@ -29,9 +35,12 @@ module alu (
             ALU_AND:  Result = A & B;
             default: Result = 32'hDEADBEEF;
         endcase
-    end
 
-    // Zero flag is asserted if the result is 0
-    assign Zero = (Result == 32'b0);
+        // Set Zero and Negative flags based on the final result
+        if (Result == 32'b0)
+            Zero = 1'b1;
+
+        Negative = Result[31]; // NEW: Set Negative flag if MSB is 1
+    end
 
 endmodule

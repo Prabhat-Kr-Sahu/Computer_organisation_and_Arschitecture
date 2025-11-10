@@ -1,15 +1,16 @@
-// Use 'volatile' to ensure the compiler doesn't optimize
-// away your calculations.
-volatile int a = 10;
-volatile int b = 12;
+// test_multiply.c
+// Chains of dependent multiplications implemented via repeated addition.
+// Small test using volatile globals so compiler doesn't optimize away memory accesses.
+
+volatile int a = 4;
+volatile int b = 3;
 volatile int c;
 volatile int d;
 volatile int e;
 
-// This is the "magic" address your testbench will watch.
-// When you write to this, the testbench knows the test is done.
-// #define TEST_FINISH_ADDR ((volatile int*)0x80000000)
-
+// Magic finish address that the testbench watches.
+// Writing the final result here signals test completion.
+// Ensure your data memory maps this address (0x00000FFC -> word index 1023 for 1024-word memory).
 #define TEST_FINISH_ADDR ((volatile int *)0x00000FFC)
 
 // Simple multiply using repeated addition. Handles sign of operands.
@@ -34,16 +35,20 @@ int multiply(int x, int y)
 
 int main()
 {
-    // This is your "chain of dependent multiplications" implemented via loop-add
-    c = multiply(a, b); // c = 10 * 12 = 120
-    d = multiply(c, a); // d = 120 * 10 = 1200
-    e = multiply(d, b); // e = 1200 * 12 = 14400
+    // Chain of dependent multiplications:
+    // a = 4, b = 3
+    // c = a * b = 4 * 3 = 12
+    // d = c * a = 12 * 4 = 48
+    // e = d * b = 48 * 3 = 144
+    c = multiply(a, b);
+    d = multiply(c, a);
+    e = multiply(d, b);
 
     // Write the final result to the "finish" address.
-    // 14400 in hex is 0x3840
+    // Expected final value: 144 decimal == 0x00000090
     *TEST_FINISH_ADDR = e;
 
-    // Infinite loop to "halt" the processor.
+    // Halt (infinite loop) — testbench will detect the store and finish simulation.
     while (1)
         ;
 }

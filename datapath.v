@@ -5,10 +5,11 @@
 //==================================================
 
 // --- Datapath ---
+////////endmodule 
 module datapath (
     input clk, rst,
     // Control Inputs from Controller
-    input [1:0] ForwardA_Sel, ForwardB_Sel,
+    input [1:0] ForwardA_Sel, ForwardB_Sel, // ADDED BACK: Now controlled by hazard_unit in Controller
     input [1:0] PCSrc, // New input for PC selection
     input       Stall, Flush,
     // Control signals for the *current* ID stage
@@ -29,15 +30,35 @@ module datapath (
     output wire       WB_RegWrite_out,
     output wire       EX_MemRead_out,
     output wire       Zero_ex, // New output for branch condition
+    output wire       Negative_ex, // NEW: Output for signed branch condition
+
+    // NEW: Pipelined control signals for Data Memory
+    output wire MemWrite_mem_out,
+    output wire MemRead_mem_out,
+    output wire MEM_MemRead_out, // NEW: Output for pipelined MemRead signal for hazard unit
 
     // Memory Interface (External)
     input  wire [31:0] instr_in,        // From Instruction Memory
     output wire [31:0] pc_out,          // To Instruction Memory Addr
     output wire [31:0] mem_addr_out,    // To Data Memory Addr
     output wire [31:0] mem_write_data_out, // To Data Memory Write Data
-    input  wire [31:0] mem_read_data_in // From Data Memory Read Data
+    input  wire [31:0] mem_read_data_in, // From Data Memory Read Data
+    
+    // Debug interface for testbench
+    input  wire [4:0]  debug_reg_addr,
+    output wire [31:0] debug_reg_data
+    ,
+    // Extra debug outputs
+    output wire [1:0] dbg_forward_a_sel,
+    output wire [1:0] dbg_forward_b_sel,
+    output wire [31:0] dbg_operand_a_ex,
+    output wire [31:0] dbg_alu_result_ex
 );
     // --- Internal Wires ---
+    // Wires for forwarding unit
+    wire [1:0] forward_a_sel_internal;
+    wire [1:0] forward_b_sel_internal;
+
     // IF Stage
     wire [31:0] pc_if;
     wire [31:0] pc_plus_4_if;
@@ -60,6 +81,7 @@ module datapath (
     wire [31:0] operand_a_ex, operand_b_ex;
     wire [31:0] alu_input_b_ex;
     wire [31:0] alu_result_ex;
+    wire        negative_flag_ex; // NEW: Internal wire for ALU's Negative flag
     wire [31:0] branch_target_addr_ex; // For branches and JAL
 
     // EX/MEM Register Outputs
@@ -131,7 +153,8 @@ module datapath (
         .clk(clk), .WriteEnable(RegWrite_wb), // Write enable from WB stage
         .ReadAddr1(rs1_addr_id), .ReadData1(rs1_data_id),
         .ReadAddr2(rs2_addr_id), .ReadData2(rs2_data_id),
-        .WriteAddr(rd_addr_wb), .WriteData(write_back_data_wb) // Write data from WB stage
+        .WriteAddr(rd_addr_wb), .WriteData(write_back_data_wb), // Write data from WB stage
+        .debug_addr(debug_reg_addr), .debug_data(debug_reg_data) // Debug ports
     );
 
     // Outputs for Controller/Hazard Unit
@@ -167,7 +190,7 @@ module datapath (
 
 
     // --- EX Stage ---
-    // Forwarding MUXes select ALU inputs
+    // Forwarding MUXes select ALU inputs. The 'Sel' signals now come from the controller.
     forwarding_mux_a u_fwd_a (
         .Data_ID(rs1_data_ex),       // Default from ID/EX reg
         .Data_MEM(alu_result_mem),   // Forward from EX/MEM reg output
@@ -181,6 +204,11 @@ module datapath (
         .Sel(ForwardB_Sel), .Out(operand_b_ex)
     );
 
+    // Debug exports: show which forwarding sel is active and EX operands
+    assign dbg_forward_a_sel = ForwardA_Sel;
+    assign dbg_forward_b_sel = ForwardB_Sel;
+    assign dbg_operand_a_ex = operand_a_ex;
+
     // ALU Input B MUX (Select between RegData or Immediate)
     assign alu_input_b_ex = ALUSrc_ex ? imm_ex : operand_b_ex;
 
@@ -189,11 +217,17 @@ module datapath (
     assign branch_target_addr_ex = pc_ex + imm_ex;
 
     // Instantiate ALU
-    // *** MODIFIED ALU to output Zero flag ***
+    // *** MODIFIED ALU to output Zero and Negative flags ***
     alu u_alu (
         .A(operand_a_ex), .B(alu_input_b_ex), .ALUOp(ALUOp_ex),
-        .Result(alu_result_ex), .Zero(Zero_ex)
+        .Result(alu_result_ex), .Zero(Zero_ex), .Negative(negative_flag_ex)
     );
+
+    // Connect the new Negative flag to the datapath output
+    assign Negative_ex = negative_flag_ex;
+
+    // Debug ALU result before passing to EX/MEM regs
+    assign dbg_alu_result_ex = alu_result_ex;
 
 
     // --- EX/MEM Pipeline Register --- // *** INSTANTIATED ***
@@ -213,6 +247,11 @@ module datapath (
     // Outputs for Controller/Hazard Unit (from EX/MEM Reg)
     assign MEM_rd_addr_out = rd_addr_mem;
     assign MEM_RegWrite_out = RegWrite_mem;
+
+    // NEW Assignments for pipelined signals
+    assign MemWrite_mem_out = MemWrite_mem;
+    assign MemRead_mem_out = MemRead_mem;
+    assign MEM_MemRead_out = MemRead_mem; // Assign to new output
 
 
     // --- MEM Stage ---
